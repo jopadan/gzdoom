@@ -811,14 +811,14 @@ void CalcFps()
 {
 	static uint64_t LastMS = 0, LastSec = 0, FrameCount = 0, LastTic = 0;
 
-	uint64_t ms = screen->FrameTime / i_timescale;
-	uint64_t howlong = ms - LastMS;
+	uint64_t ms = screen->FrameTime;
+	uint64_t howlong = (ms - LastMS) / i_timescale;
 	if ((signed)howlong > 0) // do this only once per frame.
 	{
 		uint32_t thisSec = (uint32_t)(ms / 1000);
 		if (LastSec < thisSec)
 		{
-			LastFPS = FrameCount / (thisSec - LastSec);
+			LastFPS = FrameCount / (thisSec - LastSec) * i_timescale;
 			LastSec = thisSec;
 			FrameCount = 0;
 		}
@@ -3353,6 +3353,7 @@ static int D_InitGame(const FIWADInfo* iwad_info, std::vector<std::string>& allw
 	FBaseCVar::EnableCallbacks ();
 
 	StartScreen = nostartscreen? nullptr : GetGameStartScreen(per_shader_progress > 0 ? max_progress * 10 / 9 : max_progress + 3);
+	setmodeneeded = true;
 	if (StartScreen != nullptr) StartScreen->Render();
 	
 	// +compatmode cannot be used on the command line, so use this as a substitute
@@ -3458,8 +3459,9 @@ static int D_InitGame(const FIWADInfo* iwad_info, std::vector<std::string>& allw
 	// [RH] Add any .deh and .bex files on the command line.
 	// If there are none, try adding any in the config file.
 	// Note that the command line overrides defaults from the config.
-
-	if ((ConsiderPatches("-deh") | ConsiderPatches("-bex")) == 0 &&
+	bool foundDeh = ConsiderPatches("-deh");
+	bool foundBex = ConsiderPatches("-bex");
+	if (!foundDeh && !foundBex &&
 		gameinfo.gametype == GAME_Doom && GameConfig->SetSection ("Doom.DefaultDehacked"))
 	{
 		const char *key;
@@ -3543,7 +3545,6 @@ static int D_InitGame(const FIWADInfo* iwad_info, std::vector<std::string>& allw
 		{
 			return 0;
 		}
-		setmodeneeded = true;
 	}
 
 	// [SP] Force vanilla transparency auto-detection to re-detect our game lumps now
@@ -3904,7 +3905,10 @@ int GameMain()
 	if (!zwidget)
 		zwidget = DisplayBackend::TryCreateSDL2();
 	if (!zwidget)
+    {
+		fprintf(stderr, "Unable to create init zwidget\n");
 		return -1;
+    }
 	DisplayBackend::Set(std::move(zwidget));
 
 	int ret = 0;
